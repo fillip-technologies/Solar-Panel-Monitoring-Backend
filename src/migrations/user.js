@@ -7,13 +7,13 @@ export const seedUserAuth = async () => {
       CREATE EXTENSION IF NOT EXISTS "pgcrypto";
     `);
 
-    // Create users table
+   
     await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         username VARCHAR(100) NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
-        mobile_number VARCHAR(15),
+        mobile_number VARCHAR(12),
         password_hash TEXT NOT NULL,
         role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
         refresh_token TEXT,
