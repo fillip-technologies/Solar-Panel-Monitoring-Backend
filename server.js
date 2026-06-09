@@ -7,7 +7,6 @@ const PORT = process.env.PORT;
 
 app.listen(PORT || 4000, async () => {
   const client = await pool.connect();
-
   try {
     await client.query("SELECT NOW()");
     console.log("connected");
