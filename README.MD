@@ -63,7 +63,7 @@ Make sure the following are installed:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/GovindKumar04/Solar-Panel-Monitoring-.git
+   git clone https://github.com/fillip-technologies/Solar-Panel-Monitoring-Backend
    cd Solar-Panel-Monitoring-
    ```
 
