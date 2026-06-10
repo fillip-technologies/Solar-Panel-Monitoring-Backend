@@ -10,6 +10,10 @@ import {
 } from "../utils/genrateTokens.js";
 import { accessCookieOptions, refreshCookieOptions } from "../utils/httpOnly.js";
 
+// Computed once at startup. Used to run a bcrypt.compare even when no user is
+// found, so login response timing doesn't reveal whether an account exists.
+const DUMMY_HASH = bcrypt.hashSync("dummy-password-placeholder", 10);
+
 export const register = asyncHandler(async (req, res) => {
   const { username, email, mobile_number, password } = req.body;
 
@@ -17,7 +21,7 @@ export const register = asyncHandler(async (req, res) => {
     "SELECT email FROM users WHERE email = $1 OR mobile_number = $2",
     [email, mobile_number],
   );
-
+  
   if (existingUser.rows.length > 0) {
     throw new ApiError(409, "Invalid credentials");
   }
@@ -58,22 +62,14 @@ export const login = asyncHandler(async (req, res) => {
     [normalizedUserId],
   );
 
-  if (result.rows.length === 0) {
-    throw new ApiError(401, "Invalid credentials");
-  }
-
   const user = result.rows[0];
-  // for security
-  const DUMMY_HASH ="$2b$10$C6UzMDM.H6dfI/f/IKcEe.6j6mFQ0P9Q0Fh7lN1N9W1sKj1l0y2W";
 
-  const hashToCompare = user
-  ? user.password_hash
-  : DUMMY_HASH;
+  // Always run bcrypt.compare — against a dummy hash when the user doesn't
+  // exist — so the response takes the same time either way and can't be used
+  // to enumerate accounts.
+  const hashToCompare = user ? user.password_hash : DUMMY_HASH;
 
-  const isPasswordCorrect = await bcrypt.compare(
-    password,
-    hashToCompare,
-  );
+  const isPasswordCorrect = await bcrypt.compare(password, hashToCompare);
 
   if (!user || !isPasswordCorrect) {
     throw new ApiError(401, "Invalid credentials");
