@@ -215,7 +215,9 @@ This means a protected response may quietly come back with a **refreshed `access
 
 All request and response bodies are JSON. Send `Content-Type: application/json`.
 
-> **Note on `password_hash`:** the request field is named `password_hash`, but you should send the **plain-text password** — the server hashes it before storing.
+> **Note on passwords:** always send the **plain-text password** in the `password` field — the server hashes it (bcrypt) before storing.
+
+> **Login identifier:** the `login` endpoint accepts a single `userId` field that can be **either an email or a 10-digit mobile number**. The value is normalized server-side (emails are lowercased; mobile numbers are reduced to their last 10 digits).
 
 ---
 
@@ -233,9 +235,10 @@ POST /api/register
 | --------------- | ------ | -------- | ------------------------------------------ |
 | `username`      | string | ✅       | Minimum 3 characters                       |
 | `email`         | string | ✅       | Valid email address (must be unique)       |
-| `mobile_number` | string | ✅       | Exactly 10 digits                          |
-| `password_hash` | string | ✅       | Minimum 8 characters (sent as plain text)  |
-| `role`          | string | ❌       | `"user"` or `"admin"` (defaults to `user`) |
+| `mobile_number` | string | ✅       | Exactly 10 digits (must be unique)         |
+| `password`      | string | ✅       | Minimum 8 characters (sent as plain text)  |
+
+> `role` is no longer accepted from the client — every new account is created as `user`. Admins are promoted separately.
 
 **Example request:**
 
@@ -244,8 +247,7 @@ POST /api/register
   "username": "govind",
   "email": "govind@example.com",
   "mobile_number": "9876543210",
-  "password_hash": "SuperSecret123",
-  "role": "user"
+  "password": "SuperSecret123"
 }
 ```
 
@@ -268,10 +270,10 @@ POST /api/register
 
 **Error responses:**
 
-| Status | Reason                          |
-| ------ | ------------------------------- |
-| `400`  | Validation failed (see body)    |
-| `409`  | A user with that email exists   |
+| Status | Reason                                          |
+| ------ | ----------------------------------------------- |
+| `400`  | Validation failed (see body)                    |
+| `409`  | A user with that email or mobile number exists  |
 
 ---
 
@@ -285,17 +287,26 @@ POST /api/login
 
 **Request body:**
 
-| Field           | Type   | Required | Rules                                     |
-| --------------- | ------ | -------- | ----------------------------------------- |
-| `email`         | string | ✅       | Valid email address                       |
-| `password_hash` | string | ✅       | Minimum 8 characters (sent as plain text) |
+| Field      | Type   | Required | Rules                                                     |
+| ---------- | ------ | -------- | --------------------------------------------------------- |
+| `userId`   | string | ✅       | Email address **or** 10-digit mobile number               |
+| `password` | string | ✅       | Minimum 8 characters (sent as plain text)                 |
 
-**Example request:**
+**Example request (with email):**
 
 ```json
 {
-  "email": "govind@example.com",
-  "password_hash": "SuperSecret123"
+  "userId": "govind@example.com",
+  "password": "SuperSecret123"
+}
+```
+
+**Example request (with mobile number):**
+
+```json
+{
+  "userId": "9876543210",
+  "password": "SuperSecret123"
 }
 ```
 
@@ -457,7 +468,7 @@ The `users` table (created by `npm run migrate`):
 | `user_id`       | UUID           | Primary key, auto-generated                    |
 | `username`      | VARCHAR(100)   | Required                                       |
 | `email`         | VARCHAR(255)   | Required, unique                               |
-| `mobile_number` | VARCHAR(12)    |                                                |
+| `mobile_number` | VARCHAR(12)    | Required, unique                               |
 | `password_hash` | TEXT           | bcrypt hash                                    |
 | `role`          | VARCHAR(20)    | `user` or `admin`, defaults to `user`          |
 | `refresh_token` | TEXT           | Latest refresh token                           |
