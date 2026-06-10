@@ -31,6 +31,7 @@ A Node.js + Express backend for monitoring and managing solar panel systems. The
 
 - 🔐 **User authentication** — registration & login with hashed passwords (bcrypt)
 - 🎫 **JWT tokens** — access & refresh tokens issued on login, set as `httpOnly` cookies
+- 🛡️ **Hashed refresh tokens** — only the SHA-256 hash is stored in the database, never the raw token
 - 🔄 **Auto-refresh** — expired access tokens are renewed transparently on protected routes
 - ✅ **Request validation** — schema validation with Zod on every input
 - 🚦 **Rate limiting** — protects endpoints from abuse
@@ -193,17 +194,19 @@ Authentication is **cookie-based only** — there is no `Authorization: Bearer` 
 
 Browsers send these cookies automatically, so the client normally does nothing.
 
+> **Refresh tokens are stored hashed.** The raw refresh-token JWT is only ever sent to the client in the cookie. In the database, the `refresh_token` column holds its **SHA-256 hash**, so a database-read leak can't be replayed. SHA-256 is deterministic, so renewal still works with a single indexed lookup. (Passwords use bcrypt; refresh tokens use SHA-256 because a JWT already has high entropy.)
+
 ### Auto-refresh
 
 Protected routes are guarded by the `verifyJWT` middleware, which renews an expired access token **transparently** — the client never calls a refresh endpoint:
 
 1. **Valid `accessToken`** → request proceeds (no database hit).
 2. **`accessToken` missing or expired** → the middleware checks the `refreshToken`:
-   - It must have a valid signature **and** still match the `refresh_token` stored for that user in the database.
+   - It must have a valid signature, and its **SHA-256 hash** must still match the `refresh_token` stored for that user in the database.
    - If so, a **new `accessToken` cookie** is issued automatically and the request proceeds. The refresh token itself is **not** rotated — it stays valid until it expires.
 3. **`refreshToken` missing, invalid, expired, or no longer matching the database** → `401`, and the client must log in again.
 
-> Because the stored refresh token is checked on every renewal, [logging out](#3-logout) (which clears it in the database) immediately invalidates the session — any later refresh attempt fails with `401`.
+> Because the stored refresh-token hash is checked on every renewal, [logging out](#3-logout) (which clears it in the database) immediately invalidates the session — any later refresh attempt fails with `401`.
 
 This means a protected response may quietly come back with a **refreshed `accessToken` cookie**. That is expected; just keep using the cookies the server sends.
 
@@ -471,7 +474,7 @@ The `users` table (created by `npm run migrate`):
 | `mobile_number` | VARCHAR(12)    | Required, unique                               |
 | `password_hash` | TEXT           | bcrypt hash                                    |
 | `role`          | VARCHAR(20)    | `user` or `admin`, defaults to `user`          |
-| `refresh_token` | TEXT           | Latest refresh token                           |
+| `refresh_token` | TEXT           | SHA-256 hash of the latest refresh token       |
 | `is_verified`   | BOOLEAN        | Defaults to `false`                            |
 | `created_at`    | TIMESTAMP      | Defaults to current time                       |
 | `updated_at`    | TIMESTAMP      | Defaults to current time                       |
