@@ -152,10 +152,10 @@ Solar-Panel-Monitoring/
 │   ├── controllers/
 │   │   └── userAuth.js                 # register & login request handlers
 │   ├── middlewares/
-│   │   ├── auth.middlewares.js         # (reserved) auth middleware
+│   │   ├── auth.middlewares.js         # # (reserved) JWT verification
 │   │   ├── requestLimiter.middleware.js# global rate limiter
 │   │   ├── validate.middleware.js      # Zod schema validation
-│   │   └── verifyJWT.js                # (reserved) JWT verification
+│   │                  
 │   ├── migrations/
 │   │   └── user.js                     # creates the users table
 │   ├── routes/
