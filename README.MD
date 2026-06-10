@@ -370,7 +370,7 @@ On success the server clears the user's `refresh_token` in the database and remo
 Returns the authenticated user's profile. **Protected** — see [Authentication & Token Refresh](#authentication--token-refresh).
 
 ```
-POST /api/me
+GET /api/me
 ```
 
 **Authentication:** send your auth cookies (same rules as logout — an expired `accessToken` is auto-refreshed when the `refreshToken` is valid).
