@@ -2,7 +2,8 @@ import ApiError from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken";
 import pool from "../config/db.js";
-import { genrateAccessToken } from "../utils/genrateTokens.js";
+import { genrateAccessToken, hashRefreshToken } from "../utils/genrateTokens.js";
+import { accessCookieOptions } from "../utils/httpOnly.js";
 
 export const verifyJWT = asyncHandler(async (req, res, next) => {
   const accessToken = req.cookies?.accessToken;
@@ -23,6 +24,7 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "You are not authorized");
   }
 
+  // 1. Verify signature + expiry first (no DB hit).
   let decoded;
   try {
     decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
@@ -30,13 +32,15 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Invalid or expired refresh token");
   }
 
-  // The token must still be the one stored for this user — this is what lets
-  // logout (which nulls the column) actually invalidate the session.
+  // 2. The stored value is the SHA-256 hash of the token, so hash the cookie
+  //    token and match on that. This still lets logout (which nulls the
+  //    column) invalidate the session.
+  const hashedRefreshToken = hashRefreshToken(refreshToken);
   const { rows } = await pool.query(
     `SELECT user_id, email, role
      FROM users
      WHERE user_id = $1 AND refresh_token = $2`,
-    [decoded.user_id, refreshToken]
+    [decoded.user_id, hashedRefreshToken]
   );
 
   if (rows.length === 0) {
@@ -45,7 +49,7 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
 
   const user = rows[0];
 
-  res.cookie("accessToken", genrateAccessToken(user), { httpOnly: true });
+  res.cookie("accessToken", genrateAccessToken(user), accessCookieOptions);
   req.user = user;
 
   next();

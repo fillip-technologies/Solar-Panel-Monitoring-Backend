@@ -6,7 +6,9 @@ import bcrypt from "bcrypt";
 import {
   genrateAccessToken,
   genrateRefreshToken,
+  hashRefreshToken,
 } from "../utils/genrateTokens.js";
+import { accessCookieOptions, refreshCookieOptions } from "../utils/httpOnly.js";
 
 export const register = asyncHandler(async (req, res) => {
   const { username, email, mobile_number, password } = req.body;
@@ -17,7 +19,7 @@ export const register = asyncHandler(async (req, res) => {
   );
 
   if (existingUser.rows.length > 0) {
-    throw new ApiError(409, "User already exists");
+    throw new ApiError(409, "Invalid credentials");
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -57,38 +59,43 @@ export const login = asyncHandler(async (req, res) => {
   );
 
   if (result.rows.length === 0) {
-    throw new ApiError(401, "User not found");
+    throw new ApiError(401, "Invalid credentials");
   }
 
   const user = result.rows[0];
+  // for security
+  const DUMMY_HASH ="$2b$10$C6UzMDM.H6dfI/f/IKcEe.6j6mFQ0P9Q0Fh7lN1N9W1sKj1l0y2W";
+
+  const hashToCompare = user
+  ? user.password_hash
+  : DUMMY_HASH;
 
   const isPasswordCorrect = await bcrypt.compare(
     password,
-    user.password_hash,
+    hashToCompare,
   );
 
-  if (!isPasswordCorrect) {
-    throw new ApiError(401, "Invalid password");
+  if (!user || !isPasswordCorrect) {
+    throw new ApiError(401, "Invalid credentials");
   }
 
   const accessToken = genrateAccessToken(user);
   const refreshToken = genrateRefreshToken(user);
 
+  // Store only the hash; the raw token goes to the client in the cookie.
+  const hashedRefreshToken = hashRefreshToken(refreshToken);
+
   await pool.query(
     `UPDATE users
      SET refresh_token = $1
      WHERE user_id = $2`,
-    [refreshToken, user.user_id],
+    [hashedRefreshToken, user.user_id],
   );
   delete user?.password_hash;
   return res
     .status(200)
-    .cookie("accessToken", accessToken, {
-      httpOnly: true,
-    })
-    .cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-    })
+    .cookie("accessToken", accessToken,  accessCookieOptions)
+    .cookie("refreshToken", refreshToken, refreshCookieOptions)
     .json(new ApiResponse(200, user, `Welcome ${user.username}`));
 });
 
@@ -102,8 +109,8 @@ export const logOut = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .clearCookie("accessToken", { httpOnly: true })
-    .clearCookie("refreshToken", { httpOnly: true })
+    .clearCookie("accessToken", accessCookieOptions)
+    .clearCookie("refreshToken", refreshCookieOptions)
     .json(new ApiResponse(200, {}, "Logged out successfully"));
 });
 
