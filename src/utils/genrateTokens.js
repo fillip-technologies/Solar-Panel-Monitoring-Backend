@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 export const genrateAccessToken = (user) => {
   return jwt.sign(
     {
-      id: user.user_id,
+      user_id: user.user_id,
       email: user.email,
       role: user.role,
     },
@@ -15,7 +15,7 @@ export const genrateAccessToken = (user) => {
 export const genrateRefreshToken = (user) => {
   return jwt.sign(
     {
-      id: user.user_id,
+      user_id: user.user_id,
       email: user.email,
       role: user.role,
     },

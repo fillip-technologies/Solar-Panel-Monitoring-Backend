@@ -93,7 +93,28 @@ export const login = asyncHandler(async (req, res) => {
     );
 });
 
-const logOut = asyncHandler(async (req, res) => {
-  const user = req.user;
-  use.clearCookies();
+export const logOut = asyncHandler(async (req, res) => {
+  await pool.query(
+    `UPDATE users
+     SET refresh_token = NULL
+     WHERE user_id = $1`,
+    [req.user.user_id]
+  );
+
+  return res
+    .status(200)
+    .clearCookie("accessToken", { httpOnly: true })
+    .clearCookie("refreshToken", { httpOnly: true })
+    .json(new ApiResponse(200, {}, "Logged out successfully"));
+});
+
+export const getMe = asyncHandler(async (req, res) => {
+  const user = await pool.query(
+    `SELECT user_id, username, email,mobile_number, role
+     FROM users
+     WHERE user_id = $1`,
+    [req.user.user_id]
+  );
+  
+  res.status(200).json({user: user.rows[0]})
 })

@@ -13,9 +13,12 @@ A Node.js + Express backend for monitoring and managing solar panel systems. The
 - [Environment Variables](#environment-variables)
 - [Running the Application](#running-the-application)
 - [Project Structure](#project-structure)
+- [Authentication & Token Refresh](#authentication--token-refresh)
 - [API Documentation](#api-documentation)
   - [Register](#1-register-a-user)
   - [Login](#2-login)
+  - [Logout](#3-logout)
+  - [Get Current User](#4-get-current-user)
 - [Response Format](#response-format)
 - [Rate Limiting](#rate-limiting)
 - [Database Schema](#database-schema)
@@ -28,6 +31,7 @@ A Node.js + Express backend for monitoring and managing solar panel systems. The
 
 - 🔐 **User authentication** — registration & login with hashed passwords (bcrypt)
 - 🎫 **JWT tokens** — access & refresh tokens issued on login, set as `httpOnly` cookies
+- 🔄 **Auto-refresh** — expired access tokens are renewed transparently on protected routes
 - ✅ **Request validation** — schema validation with Zod on every input
 - 🚦 **Rate limiting** — protects endpoints from abuse
 - 🗄️ **PostgreSQL** — connection pooling via `pg`
@@ -43,6 +47,7 @@ A Node.js + Express backend for monitoring and managing solar panel systems. The
 | Framework        | Express 5                           |
 | Database         | PostgreSQL (`pg`)                   |
 | Auth             | `jsonwebtoken`, `bcrypt`            |
+| Cookies          | `cookie-parser`                     |
 | Validation       | `zod`                               |
 | Rate limiting    | `express-rate-limit`               |
 | Config           | `dotenv`                            |
@@ -150,16 +155,18 @@ Solar-Panel-Monitoring/
 │   ├── config/
 │   │   └── db.js                       # PostgreSQL connection pool
 │   ├── controllers/
-│   │   └── userAuth.js                 # register & login request handlers
+│   │   └── userAuth.js                 # register, login, logout & getMe handlers
 │   ├── middlewares/
-│   │   ├── auth.middlewares.js         # # (reserved) JWT verification
+│   │   ├── auth.middlewares.js         # verifyJWT — auth + transparent token refresh
 │   │   ├── requestLimiter.middleware.js# global rate limiter
-│   │   ├── validate.middleware.js      # Zod schema validation
-│   │                  
+│   │   └── validate.middleware.js      # Zod schema validation
 │   ├── migrations/
+│   │   ├── index.js                    # migration runner (npm run migrate)
 │   │   └── user.js                     # creates the users table
 │   ├── routes/
-│   │   └── auth.routes.js              # /api/register, /api/login routes
+│   │   └── Auth/
+│   │       ├── auth.routes.js          # public:    /api/register, /api/login
+│   │       └── protectedAuth.routes.js # protected: /api/logout, /api/me
 │   ├── utils/
 │   │   ├── ApiError.js                 # standardized error class
 │   │   ├── ApiResponse.js              # standardized success response class
@@ -172,6 +179,33 @@ Solar-Panel-Monitoring/
 ├── package.json
 └── README.MD
 ```
+
+---
+
+## Authentication & Token Refresh
+
+Authentication is **cookie-based only** — there is no `Authorization: Bearer` header. On successful login the server sets two `httpOnly` cookies:
+
+| Cookie         | Lifetime                  | Purpose                                          |
+| -------------- | ------------------------- | ------------------------------------------------ |
+| `accessToken`  | `ACCESS_TOKEN_EXPIRES_IN` | Short-lived, authorizes each request             |
+| `refreshToken` | `REFRESH_TOKEN_EXPIRES_IN`| Long-lived, used to renew the access token       |
+
+Browsers send these cookies automatically, so the client normally does nothing.
+
+### Auto-refresh
+
+Protected routes are guarded by the `verifyJWT` middleware, which renews an expired access token **transparently** — the client never calls a refresh endpoint:
+
+1. **Valid `accessToken`** → request proceeds (no database hit).
+2. **`accessToken` missing or expired** → the middleware checks the `refreshToken`:
+   - It must have a valid signature **and** still match the `refresh_token` stored for that user in the database.
+   - If so, a **new `accessToken` cookie** is issued automatically and the request proceeds. The refresh token itself is **not** rotated — it stays valid until it expires.
+3. **`refreshToken` missing, invalid, expired, or no longer matching the database** → `401`, and the client must log in again.
+
+> Because the stored refresh token is checked on every renewal, [logging out](#3-logout) (which clears it in the database) immediately invalidates the session — any later refresh attempt fails with `401`.
+
+This means a protected response may quietly come back with a **refreshed `accessToken` cookie**. That is expected; just keep using the cookies the server sends.
 
 ---
 
@@ -290,6 +324,78 @@ On success the server sets two `httpOnly` cookies — `accessToken` and `refresh
 | ------ | ------------------------------------- |
 | `400`  | Validation failed (see body)          |
 | `401`  | User not found / invalid password     |
+
+---
+
+### 3. Logout
+
+Logs the current user out. **Protected** — see [Authentication & Token Refresh](#authentication--token-refresh).
+
+```
+POST /api/logout
+```
+
+**Authentication:** send the request with your auth cookies. Browsers attach them automatically; with a tool like cURL pass them explicitly. An expired `accessToken` is fine as long as the `refreshToken` is still valid — the middleware refreshes it for you.
+
+```bash
+curl -X POST http://localhost:4000/api/logout \
+  --cookie "accessToken=<token>; refreshToken=<token>"
+```
+
+**Request body:** _none_
+
+On success the server clears the user's `refresh_token` in the database and removes the `accessToken` and `refreshToken` cookies. This permanently ends the session.
+
+**Success — `200 OK`:**
+
+```json
+{
+  "statusCode": 200,
+  "data": {},
+  "message": "Logged out successfully",
+  "success": true
+}
+```
+
+**Error responses:**
+
+| Status | Reason                                            |
+| ------ | ------------------------------------------------- |
+| `401`  | Not authenticated (no valid access/refresh token) |
+
+---
+
+### 4. Get Current User
+
+Returns the authenticated user's profile. **Protected** — see [Authentication & Token Refresh](#authentication--token-refresh).
+
+```
+POST /api/me
+```
+
+**Authentication:** send your auth cookies (same rules as logout — an expired `accessToken` is auto-refreshed when the `refreshToken` is valid).
+
+**Request body:** _none_
+
+**Success — `200 OK`:**
+
+```json
+{
+  "user": {
+    "user_id": "a1b2c3d4-...",
+    "username": "govind",
+    "email": "govind@example.com",
+    "mobile_number": "9876543210",
+    "role": "user"
+  }
+}
+```
+
+**Error responses:**
+
+| Status | Reason                                            |
+| ------ | ------------------------------------------------- |
+| `401`  | Not authenticated (no valid access/refresh token) |
 
 ---
 
