@@ -9,25 +9,26 @@ import {
 } from "../utils/genrateTokens.js";
 
 export const register = asyncHandler(async (req, res) => {
-  const { username, email, mobile_number, password_hash, role } = req.body;
+  const { username, email, mobile_number, password } = req.body;
 
   const existingUser = await pool.query(
-    "SELECT email FROM users WHERE email = $1",
-    [email],
+    "SELECT email FROM users WHERE email = $1 OR mobile_number = $2",
+    [email, mobile_number],
   );
 
   if (existingUser.rows.length > 0) {
     throw new ApiError(409, "User already exists");
   }
 
-  const hashedPassword = await bcrypt.hash(password_hash, 10);
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const mobile = mobile_number.replace(/\D/g, "").slice(-10);
 
   const user = await pool.query(
     `INSERT INTO users
-    (username, email, mobile_number, password_hash, role)
-    VALUES ($1, $2, $3, $4, $5)
+    (username, email, mobile_number, password_hash)
+    VALUES ($1, $2, $3, $4)
     RETURNING user_id, username, email, mobile_number, role`,
-    [username, email, mobile_number, hashedPassword, role],
+    [username, email, mobile, hashedPassword],
   );
 
   return res
@@ -42,13 +43,17 @@ export const register = asyncHandler(async (req, res) => {
 });
 
 export const login = asyncHandler(async (req, res) => {
-  const { email, password_hash } = req.body;
+  const { userId, password } = req.body;
+
+  const normalizedUserId = userId.includes("@")
+    ? userId.trim().toLowerCase()
+    : userId.replace(/\D/g, "").slice(-10);
 
   const result = await pool.query(
     `SELECT user_id, username, email,mobile_number, password_hash, role
      FROM users
-     WHERE email = $1`,
-    [email]
+     WHERE email = $1 or mobile_number=$1`,
+    [normalizedUserId],
   );
 
   if (result.rows.length === 0) {
@@ -58,8 +63,8 @@ export const login = asyncHandler(async (req, res) => {
   const user = result.rows[0];
 
   const isPasswordCorrect = await bcrypt.compare(
-    password_hash,
-    user.password_hash
+    password,
+    user.password_hash,
   );
 
   if (!isPasswordCorrect) {
@@ -73,7 +78,7 @@ export const login = asyncHandler(async (req, res) => {
     `UPDATE users
      SET refresh_token = $1
      WHERE user_id = $2`,
-    [refreshToken, user.user_id]
+    [refreshToken, user.user_id],
   );
   delete user?.password_hash;
   return res
@@ -84,13 +89,7 @@ export const login = asyncHandler(async (req, res) => {
     .cookie("refreshToken", refreshToken, {
       httpOnly: true,
     })
-    .json(
-      new ApiResponse(
-        200,
-        user,
-        `Welcome ${user.username}`
-      )
-    );
+    .json(new ApiResponse(200, user, `Welcome ${user.username}`));
 });
 
 export const logOut = asyncHandler(async (req, res) => {
@@ -98,7 +97,7 @@ export const logOut = asyncHandler(async (req, res) => {
     `UPDATE users
      SET refresh_token = NULL
      WHERE user_id = $1`,
-    [req.user.user_id]
+    [req.user.user_id],
   );
 
   return res
@@ -113,8 +112,8 @@ export const getMe = asyncHandler(async (req, res) => {
     `SELECT user_id, username, email,mobile_number, role
      FROM users
      WHERE user_id = $1`,
-    [req.user.user_id]
+    [req.user.user_id],
   );
-  
-  res.status(200).json({user: user.rows[0]})
-})
+
+  res.status(200).json({ user: user.rows[0] });
+});
