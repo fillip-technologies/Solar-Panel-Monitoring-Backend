@@ -385,6 +385,6 @@ This project is licensed under the **ISC License** — see [`package.json`](./pa
 
 ## Repository
 
-[GitHub repository](https://github.com/GovindKumar04/Solar-Panel-Monitoring-) · [Report an issue](https://github.com/GovindKumar04/Solar-Panel-Monitoring-/issues)
+[GitHub repository](https://github.com/GovindKumar04/Solar-Panel-Monitoring-.git) · [Report an issue](https://github.com/GovindKumar04/Solar-Panel-Monitoring-/issues)
 </content>
 </invoke>
