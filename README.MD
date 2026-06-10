@@ -64,7 +64,7 @@ Make sure the following are installed:
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/fillip-technologies/Solar-Panel-Monitoring-Backend
-   cd Solar-Panel-Monitoring-
+   cd Solar-Panel-Monitoring-Backend
    ```
 
 2. **Install dependencies:**
